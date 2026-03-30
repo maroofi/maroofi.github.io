@@ -3,10 +3,10 @@ layout: default
 title: Notes
 ---
 
-# My Notes
+# Some random notes
 
-This is my first page written in Markdown.
+this is just a placeholder
 
 ## Section
-- Point 1
-- Point 2
+- Sec 1
+- Sec 2
