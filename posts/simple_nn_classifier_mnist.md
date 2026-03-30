@@ -1,3 +1,8 @@
+---
+layout: default
+title: ""
+---
+
 Neural Network (NN) is a computational approach, which is based on a large collection of neural units (AKA artificial neurons), loosely modeling the way a biological brain solves problems using large clusters of biological neurons connected by axons.
 
 one of the applications of neural networks is to solve classification problems. Assume that you have a set of sample data which consist of two classes (let's say class A and class B). Here, the goal is to classify the samples, in other words, label them as either "A" or "B".
