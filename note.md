@@ -1,3 +1,8 @@
+---
+layout: default
+title: Notes
+---
+
 # My Notes
 
 This is my first page written in Markdown.
