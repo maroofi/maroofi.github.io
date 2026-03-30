@@ -1,0 +1,186 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import math
+import os
+import sys
+from struct import unpack
+class mlp:
+    """
+        Multilayer perceptron using back propagation of error (only one hidden layer)
+    """
+    def __init__(self):
+        self.learning_rate = 0.8
+        self.number_of_hidden_layer = 1 #always must be 1
+        self.number_of_input_unit = 2
+        self.number_of_output_unit = 1
+        self.number_of_hidden_unit = 5
+        self.activation_function_name = 'sigmoid'
+        self.max_epoch = 30000
+        self.max_error = 2
+        self.number_of_train_sample = 100
+        self.epoch =0
+        self.print_each_n_epoch = 100
+
+    def train(self, sample, target):
+        print('starting train routine....')
+        v_activation_function = np.vectorize(self.activation_function)
+        v_activation_function_derivative=np.vectorize(self.activation_function_derivative)
+        self.epoch = 0
+        weights_array_ih = np.random.rand(self.number_of_input_unit+1, self.number_of_hidden_unit) - 0.5
+        weights_array_ho = np.random.rand(self.number_of_hidden_unit+1, self.number_of_output_unit) - 0.5
+        z_in = np.zeros((1,self.number_of_hidden_unit))  #be tedade selool haaye makhfi dar laye makhfi
+        z = np.zeros((1,self.number_of_hidden_unit))  # for computing result of activation function on z_in
+        y_in = np.zeros((1,self.number_of_output_unit)) # number of output unit
+        y = np.zeros((1,self.number_of_output_unit))
+        delta_out=np.zeros((1,self.number_of_output_unit))
+        delta_weights_array_ho = np.zeros((self.number_of_hidden_unit+1,self.number_of_output_unit))
+        delta_in = np.zeros((1,self.number_of_hidden_unit))
+        delta = np.zeros((1,self.number_of_hidden_unit))
+        delta_weights_array_ih = np.zeros((self.number_of_input_unit+1,self.number_of_hidden_unit))
+        error_count = self.number_of_train_sample
+        while (error_count > self.max_error):
+            for i in range(0, self.number_of_train_sample):
+                input_array = np.append(sample[i, :], 1)
+                z_in = np.sum( weights_array_ih * np.tile(input_array,(self.number_of_hidden_unit, 1)).T, axis=0)
+                z = v_activation_function(z_in)
+                y_in = np.sum(np.tile(np.append(z, 1), (self.number_of_output_unit, 1)).T  * weights_array_ho , axis=0)
+                y = v_activation_function(y_in)
+                # now we want to backpropagete the error 
+                for k in range(0, self.number_of_output_unit):
+                    delta_out[0, k] = (target[i, k] - y[k] ) * v_activation_function_derivative(y_in[k])
+                    z_temp = np.append(z, 1)
+                    for j in range(0, self.number_of_hidden_unit+1):
+                        delta_weights_array_ho[j, k] = self.learning_rate * z_temp[j] * delta_out[0,k]
+                
+                for j in range(0, self.number_of_hidden_unit):
+                    delta_in[0, j] = 0
+                    for k in range(0, self.number_of_output_unit):
+                        delta_in[0, j] = delta_in[0, j] + delta_out[0, k] * weights_array_ho[j, k]
+                    delta[0, j] = delta_in[0, j] * v_activation_function_derivative(z_in[j])
+                    
+                for j in range(0, self.number_of_hidden_unit):
+                    delta_weights_array_ih[:, j] = self.learning_rate * delta[0, j] * input_array
+                #update the weights
+                weights_array_ih = weights_array_ih + delta_weights_array_ih
+                weights_array_ho = weights_array_ho + delta_weights_array_ho
+            #end of for
+            self.epoch +=  1
+            #print out each 100 epoch
+            error_count = self.mlp_usage(weights_array_ih,weights_array_ho, self.validate_sample, self.validate_target)
+            if (self.epoch % self.print_each_n_epoch==0):
+                print("Running {} Epoch with {} error(s)".format(self.epoch, error_count))
+        #end of while
+        print("After running {} Epoch, finished with {} error(s)".format(self.epoch, error_count))
+        self.v = weights_array_ih
+        self.w = weights_array_ho
+
+    def test(self, v, w, test_sample, test_target):
+        error_count = 0
+        v_activation_function = np.vectorize(self.activation_function)
+        siz = test_sample.shape
+        for i in range(0, siz[0]):
+            input_array = np.append(test_sample[i, :], 1)
+            x = np.tile(input_array, ( self.number_of_hidden_unit, 1)).T
+            z_in = np.sum(x * v ,  axis = 0)
+            z = v_activation_function(z_in)
+            z = np.append(z, 1)
+            z = np.tile(z, ( self.number_of_output_unit, 1)).T
+            y_in = np.sum(z * w, axis=0)
+            y = v_activation_function(y_in)
+            #we have used a thereshold for ultimate result. result above 0.9 means 1 and below 0.1 means zero but another approach is to use round method.
+            y[y[:]>0.9] = 1
+            y[y[:]<0.1] = 0
+            if (sum(y==test_target[i])!=len(y)):
+                error_count +=  1
+                print('test target is: ' + str(test_target[i]) + ' and y is :' + str(y)) 
+        #end of for 
+        return error_count
+
+    def plot(self, data):
+        class1 = data[ data[:,2]==np.float64(1), 0:2]
+        class2 = data[ data[:,2]==np.float64(0), 0:2]
+        v = self.v.T
+        x = np.linspace(0, 1, 11)
+        fig = plt.figure()
+        ax = fig.gca()
+        ax.set_autoscale_on(False)
+        plt.title("MLP(learning_rate={},max_error={},epoch={},hidden_unit={})".format(self.learning_rate, self.max_error, self.epoch, self.number_of_hidden_unit))
+        plt.plot(class1[:,0],class1[:,1],'b+')
+        plt.plot(class2[:,0],class2[:,1],'rx')
+        for i in range(0, self.number_of_hidden_unit):
+            y = ((-1*v[i, 0]/v[i, 1] ) * x )- (v[i, 2]/v[i, 1]);
+            plt.plot(x,y,'-')
+        #end of for
+        plt.yticks(x)
+        plt.xticks(x)
+        plt.show()
+
+    def activation_function(self, data):
+        return 1.0/(1+ math.exp(-data))
+
+    def activation_function_derivative(self, data):
+        t = self.activation_function(data)
+        return t * (1 - t)
+
+    def mlp_usage(self, v, w, sample, target):
+        error_count = 0
+        v_activation_function = np.vectorize(self.activation_function)
+        siz = sample.shape
+        for i in range(0, siz[0]):
+            input_array = np.append(sample[i, :], 1)
+            x = np.tile(input_array, ( self.number_of_hidden_unit, 1)).T
+            z_in = np.sum(x * v ,  axis = 0)
+            z = v_activation_function(z_in)
+            z = np.append(z, 1)
+            z = np.tile(z, ( self.number_of_output_unit, 1)).T
+            y_in = np.sum(z * w, axis=0)
+            y = v_activation_function(y_in)
+            y[y[:]>0.9] = 1
+            y[y[:]<0.1] = 0
+            if (sum(y==target[i])!=len(y)):
+                error_count +=  1
+        #end of for 
+        return error_count
+    def driver(self):
+        #define sample and target here
+        #sample, target
+        my_data = np.genfromtxt('data.txt');
+        sample = my_data[:,0:2];
+        target = np.zeros((self.number_of_train_sample,self.number_of_output_unit))
+        target[:,0] = my_data[:,2];
+        sample_size = len(my_data) 
+        self.validate_sample = sample[0:30]
+        self.validate_target = target[0:30]
+        #we use all the sample for both train and test which is a wrong approach. you can use 70% for training and 30% for testing.
+        self.number_of_train_sample = 100
+        self.train(sample, target)
+        print('Now starting to test the weights on ' + str(self.number_of_train_sample) + ' test data...')
+        error_count = self.test(self.v, self.w, sample, target)
+        print('Finish test with {} error out of '.format(error_count)+ str(self.number_of_train_sample) +' test sample')
+        self.plot(my_data);
+
+if __name__=="__main__":
+    a = mlp();
+    a.driver();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
