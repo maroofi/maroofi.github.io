@@ -1,5 +1,8 @@
 ### Feasibility of issuing TLS cert for a domain name with partial lame delegation
 
+The description of sacrificial nameservers and lame delegation and how it works can be found in 
+[Risky BIZness: Risks Derived from Registrar Name Management](https://cs.stanford.edu/~gakiwate/papers/risky_bizness_imc21.pdf).
+
 Is it possible to issue certificate for a domain name with partial/full lame delegation?
 
 Let's say we have a domain name `tmdhosting114.eu`. This domain is set as the name server of several domain names:
