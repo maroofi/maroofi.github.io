@@ -7,6 +7,7 @@ Is it possible to issue certificate for a domain name with partial/full lame del
 
 Let's say we have a domain name `tmdhosting114.eu`. This domain is set as the name server of several domain names:
 
+--------------------------------------------------------
 ```bash
 (globalenv) srn@srnpc:~$ dig ns abukhaleed.com @a.gtld-servers.net
 
@@ -33,6 +34,7 @@ abukhaleed.com.		172800	IN	NS	ns2.eu14.tmd.cloud.
 ;; WHEN: Wed Apr 08 11:01:54 CEST 2026
 ;; MSG SIZE  rcvd: 145
 ```
+--------------------------------------------------------
 
 For the domain name `abukhaleed.com`, 4 nameservers listed. `ns[12].eu14.tmd.cloud` are working nameservers and `ns[12].tmdhosting114.eu` is not even registered. By registering `tmdhosting114.eu`
 and running a DNS server, one can have control a subset of the nameservers of the `abukhaleed.com` (2 out of 4 or 50%) but is it possible to issue a TLS cert for a domain?
