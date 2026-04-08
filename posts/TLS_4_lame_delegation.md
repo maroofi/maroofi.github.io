@@ -42,6 +42,8 @@ and running a DNS server, one can have control a subset of the nameservers of th
 Using Let's encrypt client to issue a TLS cert, one can use either [DNS-01](https://letsencrypt.org/docs/challenge-types/) or [HTTP-01](https://letsencrypt.org/docs/challenge-types/) challenges.
 
 Let's say we use HTTP-01 challenge. Here is the NGINX configuration we need in the `/etc/nginx/conf.d/abukhaleed_com.conf`:
+
+--------------------------------------------------------
 ```bash
 server {
     listen 80; 
@@ -49,10 +51,12 @@ server {
     root /var/www/html/;
 }
 ```
+--------------------------------------------------------
+
 and also a working DNS server to answer queries going to `ns[12].tmdhosting114.eu`. By registering `tmdhosting114.eu` and defining two A records for `ns1` and `ns2` in the registerar panel, 
 and specifying the IP address of our DNS server as X.X.X.X then running this Lua code with bulkDNS:
 
-
+--------------------------------------------------------
 ```lua
 -- loading our DNS library
 sdns = require("libsdns")
@@ -156,18 +160,23 @@ function main(raw_data, client_info)
     return nil, nil
 end
 ```
+--------------------------------------------------------
 
 Running this Lua code with bulkDNS:
 
+--------------------------------------------------------
 ```bash
 bulkdns --server-mode --bind-ip=0.0.0.0 -p 5300 --lua-script=tmdhosting114_eu.lua
 ```
+--------------------------------------------------------
+
 (Don't forget to use iptables to forward 53 to 5300)
 
 In theory, it should work perfectly fine, but in practice, you have control over only a subset of the name servers (2 out of 4). Apparently, Let's encrypt uses different servers (locations) to send
 query and get the A record of the domain name. 2 of the nameservers return your IP address while the other 2 return another IP address and this will result in 
 **inconsistent DNS answers across authoritative nameservers** thus, failure in TLS certificate issue process:
 
+--------------------------------------------------------
 ```bash
 root@servertestnader:/etc/nginx/conf.d# certbot --nginx -v
 Saving debug log to /var/log/letsencrypt/letsencrypt.log
@@ -198,6 +207,7 @@ Cleaning up challenges
 Some challenges have failed.
 Ask for help or search for solutions at https://community.letsencrypt.org. See the logfile /var/log/letsencrypt/letsencrypt.log or re-run Certbot with -v for more details.
 ```
+--------------------------------------------------------
 
 The response shows that **`Some of the challenges have failed`** which means some of the DNS resolution resulted in the other IP address that is not under our control. It seems like
 the code is [here](https://github.com/letsencrypt/boulder/blob/main/va/va.go#L345) saying that there will be local and remote servers to verify the challenge and there is a maximum
@@ -207,6 +217,7 @@ number of failure that is allowed. If the number of failures is greater than wha
 To make sure that the setup is correct, it's possible to test the same scenario but this time with a domain name that only has `ns[12].tmdhosting114.eu` as the nameserver. `beuy.ch` is one 
 of them (can be seen [here](https://dns.coffee/domains/beuy.ch)).
 
+--------------------------------------------------------
 ```bash
 
 (globalenv) srn@srnpc:~$ dig @a.nic.ch. beuy.ch ns 
@@ -234,8 +245,10 @@ beuy.ch.		3600	IN	NS	ns1.tmdhosting114.eu.
 ;; MSG SIZE  rcvd: 88
 
 ```
+--------------------------------------------------------
 
 In theory, having control over `tmdhosting114.eu` should result in having control over `beuy.ch`. Using the same Lua code (mentioned earlier) by changing line 11 from:
+
 ```lua
 local domain = "abukhaleed.com"
 ```
@@ -247,6 +260,7 @@ local domain = "beuy.ch"
 and running bulkDNS, let's try to issue a TLS certificate. It's all good and the certificate can be issued successfully. Here is the list of requests we get when asking for certificate
 using **certbot** and HTTP-01 challenge.
 
+--------------------------------------------------------
 ```json
 {"question":{"qtype":"AAAA","qclass":"IN","qname":"BEuy.cH."},"client_port":8245,"client_ip":"23.178.112.105","client_proto":"UDP"}
 {"question":{"qtype":"A","qclass":"IN","qname":"BEUy.cH."},"client_port":7460,"client_ip":"23.178.112.106","client_proto":"UDP"}
@@ -267,6 +281,7 @@ using **certbot** and HTTP-01 challenge.
 {"question":{"qtype":"AAAA","qclass":"IN","qname":"beuy.ch."},"client_port":25962,"client_ip":"162.158.209.112","client_proto":"UDP"}
 {"question":{"qtype":"DNSKEY","qclass":"IN","qname":"beuy.ch."},"client_port":59215,"client_ip":"162.158.209.112","client_proto":"UDP"}
 ```
+--------------------------------------------------------
 
 It seems like the requests (A and AAAA) are coming from different ASes and different countries for a single certificate. The case randomization comes from [Increased DNS Forgery Resistance Through 0x20-Bit Encoding](https://coeus.ece.gatech.edu/articles/increased_dns_resistance.pdf).
 
