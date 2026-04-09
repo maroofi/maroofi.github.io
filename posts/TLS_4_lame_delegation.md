@@ -211,7 +211,7 @@ Ask for help or search for solutions at https://community.letsencrypt.org. See t
 
 The response shows that **`Some of the challenges have failed`** which means some of the DNS resolution resulted in the other IP address that is not under our control. It seems like
 the code is [here](https://github.com/letsencrypt/boulder/blob/main/va/va.go#L345) saying that there will be local and remote servers to verify the challenge and there is a maximum
-number of failure that is allowed. If the number of failures is greater than what is hardcoded in the code, then the certificate wong be issued.
+number of failure that is allowed. If the number of failures is greater than what is hardcoded in the code, then the certificate won't be issued.
 
 
 To make sure that the setup is correct, it's possible to test the same scenario but this time with a domain name that only has `ns[12].tmdhosting114.eu` as the nameserver. `beuy.ch` is one 
