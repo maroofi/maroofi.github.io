@@ -221,6 +221,35 @@ int getaddrinfo(const char *node,
                  const char *service,
                  const struct addrinfo *hints,
                  struct addrinfo **res);
+
+// node: either a domain name or IP address
+// service: either a port number (e.g., "80") or service name ("https")
+// hints: fill this one to give the kernel some hints about the service
+// res: a pointer to a link list of results. You just pass the pointer,
+// you don't need to allocate memory.You can free the allocated memory
+// for the res using freeaddrinfo() function.
 ```
+
+The result of this function is a linked-list. Why? a domain name may have multiple A records.
+The `addrinfo` structure is like:
+
+```c
+struct addrinfo {
+    int              ai_flags;
+    int              ai_family;    // AF_INET, AF_INET6, or AF_UNSPEC
+    int              ai_socktype;  // SOCK_STREAM or SOCK_DGRAM
+    int              ai_protocol;  // usually 0
+    socklen_t        ai_addrlen;
+    struct sockaddr *ai_addr;      // ← the actual sockaddr_in/in6, ready to use
+    char            *ai_canonname;
+    struct addrinfo *ai_next;      // ← linked list to the next candidate
+};
+```
+
+In the `hints` parameter of `getaddrinfo()`, we can set the `ai_family` to `AF_UNSPEC` which means we don't care about IP version. Basically, we just need to fill in two fiels of
+the `hints` param: `ai_family` and `ai_socktype`. We can set the rest all to zero using `memset()` function.
+
+
+
 
 
