@@ -1,3 +1,6 @@
+
+### Some Socket Notes
+
 This is just a reference to keep here so that I don't check the man pages every time I want to do something.
 
 Sockets are actually files. On opening one, the kernel gives back an integer (fd) and you can `read`, `write` and `close` it like other files. However, instead of using `read()` and `write()`,
@@ -248,6 +251,8 @@ struct addrinfo {
 
 In the `hints` parameter of `getaddrinfo()`, we can set the `ai_family` to `AF_UNSPEC` which means we don't care about IP version. Basically, we just need to fill in two fiels of
 the `hints` param: `ai_family` and `ai_socktype`. We can set the rest all to zero using `memset()` function.
+
+-------------------------
 
 
 
