@@ -721,6 +721,55 @@ if (r <= 0) {
 
 --------------------------------------
 
+List of errors need to be checked in socket programming:
+
+#### send/recv erros
+
+|Constant|Meaning|
+|--------|--------|
+|`EAGAIN` / `EWOULDBLOCK`| no data ready (recv) or no buffer space (send) right now. (These are the same value on Linux, but POSIX allows them to differ, so check both.)|
+|`EINTR`|Interrupted by a signal before any data was transferred — just retry|
+|`ECONNRESET`|Peer sent an RST — connection forcibly closed (e.g., they crashed, or sent data after closing their end)|
+|`EPIPE`|ou tried to write to a socket the peer has closed — pairs with `SIGPIPE` unless using `MSG_NOSIGNAL`|
+|`ENOTCONN`|Socket isn't connected (e.g., called `send()` before `connect()` completed)|
+|`ETIMEDOUT`|Connection timed out (no response from peer)|
+
+
+#### connect() errors
+
+|Constant|Meaning|
+|--------|--------|
+|`ECONNREFUSED`|Nothing listening on that port — peer sent RST immediately|
+|`ETIMEDOUT`|No response at all within the OS's connection timeout|
+|`ENETUNREACH`|No route to that network exists|
+|`EHOSTUNREACH`|Route exists, but host unreachable at some hop|
+|`EINPROGRESS`|Non-blocking `connect()` started but hasn't completed yet — not an error, expected|
+|`EALREADY`|A previous non-blocking `connect()` on this socket is still in progress|
+|`EISCONN`|Socket is already connected (e.g., calling `connect()` again on a connected socket)|
+
+
+#### bind() errors
+
+|Constant|Meaning|
+|--------|--------|
+|`EADDRINUSE`|Address/port already bound by another socket|
+|`EACCES`|  Trying to bind a privileged port|
+|`EADDRNOTAVAIL`|The requested address isn't one of this machine's own addresses|
+|`EINVAL`|Socket already bound|
+
+
+#### accept() errors
+
+|Constant|Meaning|
+|--------|--------|
+|`EAGAIN` / `EWOULDBLOCK`|Non-blocking socket, no pending connections right now|
+|`ECONNABORTED`|A connection was aborted before you could accept it|
+|`EMFILE`|Process has hit its per-process open fd limit|
+|`ENFILE`|System-wide open fd limit reached|
+|`EINTR`|Interrupted by signal — retry|
+
+
+
 
 
 
