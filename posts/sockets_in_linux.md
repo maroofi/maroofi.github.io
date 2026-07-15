@@ -769,6 +769,8 @@ List of errors need to be checked in socket programming:
 |`EINTR`|Interrupted by signal — retry|
 
 
+-------------------------------------
+
 
 
 
