@@ -465,6 +465,85 @@ int main(void) {
 
 -------------------------------------------
 
+#### Sending and Receiving data
+
+Now when it comes to sending and receiving data, the whole thing is a little bit tricky. We need to first know if we are talking about a specific protocol (e.g., TCP, UDP) or sending a 
+raw payload over IP?
+
+Let's start with TCP. In TCP, we have no concept of "**message**". All we have is a stream of data.
+
+Here is the syntax of the two functions:
+
+```c
+#include <sys/socket.h>
+
+ssize_t send(int sockfd, const void *buf, size_t len, int flags);
+ssize_t recv(int sockfd, void *buf, size_t len, int flags);
+```
+
+The return value of the both functions is the actual bytes sent/received or -1 in case of error. When I say, "there is no concept of message", it means that the kernel is free to break
+your data from any points it feels like! In one `recv()` call, you may get 1 byte or the whole data or a few bytes of data. You need to have your own (upper level) protocol to know when to 
+stop reading data. The same rule applies to `send()` function. When you call, `send()`, you just send the data from your machine to the kernel buffer. It's the kernel who decides when to send
+the data. The buffer might be partially full (probably from the previous calls). This means that you may not even be able to send all the data at once. So the return value of `send()` function
+can be any value, not necessarily the actual amount you tell it to send. Therefore, for both functions, you must call them in a loop to collect what you expect to collect or kill it when
+there is an error (e.g., the other side closes the connection).
+
+The return value of `recv()` function has 3 possibilities:
+
+
+|Return Value |Meaning|
+|----------|-------------------|
+| n > 0| Successfully received n bytes|
+| n = 0 | The peer closed the connection|
+|n == -1| An actual error occurred — check `errno`|
+
+Even though we covered every possibility, still these functions need careful control and a quality code make sure it covers all the possible scenarios like closing connection, 
+suddin closing, slow-loris attack. timeout, etc...
+
+I will write a code to cover all these after introducing `poll()` function.
+
+#### Sending data in connectionless mode
+
+In UDP, there is no need to call the `connect()` function as we don't need to connect to someone. We just create the socket and start sending data. This means we need another function and
+we can not use `send()` here without calling `connect()`. Therefore, we use `sendto()` function:
+
+```c
+#include <sys/socket.h>
+
+ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
+                const struct sockaddr *dest_addr, socklen_t addrlen);
+```
+
+`sendto()` function has two more parameters that covers what `connect()` was suppoed to do it for us. We need to specify the destination address in every call. This means that we can 
+open a socket one time and send data to different destination by calling `sendto()` functions several times.
+
+the other function for receiving data in UDP is called `recvfrom()`.
+
+```c
+ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
+                  struct sockaddr *src_addr, socklen_t *addrlen);
+
+// you allocate the buffer and kernel fills it for you!
+```
+
+In UDP, **unlike** TCP, whatever that is sent by `sendto()` will be received in **one call** of `recvfrom()`. This means that there is a message boundry and it's not just a stream of bytes. 
+`sendto()` sends exactly one datagram and `recvfrom()` receives exactly one datagram.
+
+
+#### Can UDP use connect() function.
+
+Of course it's possible. You can call the `connect()` function before sending and receiving data. In this way, it's possible to call `send()` and `recv()` instead of `sendto()` and 
+`recvfrom()`. This also has a small advantage. Calling `recv()` after `connect()` in UDP mode will filter out all UDP packets which don't match your given destination. However, using 
+`recvfrom()` you will receive all the packets destined for the given port no matter which IP address they are coming from!
+
+#### Better ways of handling connections: poll() and epoll()
+
+Before getting into details of `poll()` and `epoll()`, it's worth to mention that there is also another function called `select()` which can do the job for us. `select()` is POSIX and
+it's available everywhere (Linux, Unix,....). However, it suffers from several limitations and that's why Linux introduced `epoll()`. `poll()` is also POSIX and it handles some of the 
+limitations of `select()` but still it's slower than `epoll()` and that's because of the algorithm behind it. We are going to introduce both `poll()` and `epoll()` but it is recommended
+to only use `epoll()`. We introduce `poll()` because it's just simply easier to understand and it helps better understanding 'epoll()`.
+
+
 
 
 
