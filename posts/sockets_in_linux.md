@@ -277,8 +277,89 @@ Most of the time, we use `bind()` for server side operations. Here is the syntax
 
 int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 ```
+`bind()` actually assigns a local address (e.g., IP+PORT in AF_INET) to a socket. If you are running a server, it needs to have a specific IP and port. When you are running a client code, you 
+still need local IP and port but if you don't call bind (which we almost never do), the kernel will automatically assign us a port and bind to the default interface IP address.
 
+When we want to bind to the default IP address, the constant `INADDR_ANY` can be useful. This is basically the same as 0.0.0.0 address.
 
+```c
+// in the file in.h
+/* Address to accept any incoming messages.  */
+#define INADDR_ANY      ((in_addr_t) 0x00000000)
+```
+
+Now one of the very common problem when we write server code is the **address already in use** error. This happens when for example, you are running a TCP server bound to port 8080. You
+kill the code with CTRL+c and you want to run it again immediately. Here is the error you get: **bind: Address already in use**.
+
+The reason is the **TIME_WAIT** of TCP. When a TCP connection closes, the side that initiate the close will send **FIN** request and does not immediately free up the connection. It's kind of
+a post handshake that will be done between peers and during this time, the server enters **TIME_WAIT** mode. This may take from 60 seconds to few minutes (depend on the OS). One solution
+to avoid this is to set a socket option `SO_REUSEADDR`. 
+
+```c
+int optval = 1;
+setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+```
+This tells the kernel: "**allow this socket to bind to an address/port that's in TIME_WAIT, as long as it's not actually actively LISTENing elsewhere.**"
+
+#### what if you want to bind to both IPv4 and IPv6 at the same time?
+
+There are several ways to do this. The second parameter of the `bind()` is the `sockaddr` structure which has a member `sin_family`. This can be either `AF_INET` or `AF_INET6`. This means
+that `bind()` can only work in one of the stacks (4 or 6). 
+
+here is the classic example of `bind()`:
+
+```c
+int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+int yes = 1;
+setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+
+struct sockaddr_in addr;
+memset(&addr, 0, sizeof(addr));
+addr.sin_family      = AF_INET;
+addr.sin_port        = htons(8080);
+addr.sin_addr.s_addr = INADDR_ANY;
+
+bind(sockfd, (struct sockaddr *)&addr, sizeof(addr));
+
+listen(sockfd, SOMAXCONN);   // ← socket is now passively listening
+
+// next: accept() in a loop
+```
+and also we know that `INADDR_ANY` equals to `0.0.0.0` which is IPv4. So if you want to bind to IPv6, here is the equivalent:
+
+```c
+struct sockaddr_in6 addr6;
+addr6.sin6_family = AF_INET6;
+addr6.sin6_addr   = in6addr_any;    // the IPv6 wildcard, "::"
+```
+
+but if you want to do the both, one solution (the cleanest) is to `fork()` the process and the new process run the other stack. I like this one because it's clean. for example, the parent runs
+on IPv4 and the child runs on IPv6 or you can run two versions of the code to handle things completely separately.
+
+another approach is to use **IPv4-mapped IPv6 address**. In this approach:
+
+```c
+int sockfd = socket(AF_INET6, SOCK_STREAM, 0);
+
+struct sockaddr_in6 addr6;
+memset(&addr6, 0, sizeof(addr6));
+addr6.sin6_family = AF_INET6;
+addr6.sin6_addr   = in6addr_any;   // "::" — binds all IPv6 interfaces
+addr6.sin6_port   = htons(8080);
+
+int v6only = 0;   // 0 = allow IPv4-mapped connections too (dual-stack)
+                  // 1 = IPv6 ONLY, reject IPv4-mapped connections
+setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
+
+bind(sockfd, (struct sockaddr *)&addr6, sizeof(addr6));
+listen(sockfd, SOMAXCONN);
+```
+
+This will accept all the IPv6 addresses and maps all the IPv4 addresses to IPv6 (and accept them as well). A IPv4 `192.168.1.1` will be mapped to `::ffff:192.168.1.1`.
+(I personally use two separate stacks).
+
+#### Listen to connections
 
 
 
