@@ -530,7 +530,7 @@ In UDP, **unlike** TCP, whatever that is sent by `sendto()` will be received in 
 `sendto()` sends exactly one datagram and `recvfrom()` receives exactly one datagram.
 
 
-#### Can UDP use connect() function.
+#### Can UDP use connect() function ?
 
 Of course it's possible. You can call the `connect()` function before sending and receiving data. In this way, it's possible to call `send()` and `recv()` instead of `sendto()` and 
 `recvfrom()`. This also has a small advantage. Calling `recv()` after `connect()` in UDP mode will filter out all UDP packets which don't match your given destination. However, using 
