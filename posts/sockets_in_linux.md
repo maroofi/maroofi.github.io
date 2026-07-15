@@ -1,3 +1,7 @@
+---
+layout: posts
+---
+
 
 ### Some Socket Notes
 
@@ -167,6 +171,16 @@ struct sockaddr_ll {
 };
 ```
 
+or a general one that is guaranteed to be big enough to hold all types of addresses: `sockaddr_storage`: This can be used for example in `accept()` function when
+we don't know if the client is using IPv4 or IPv6 to connect.
+
+```c
+struct sockaddr_storage {
+    sa_family_t ss_family;
+    // ... padding, guaranteed large enough and aligned for ANY sockaddr_* variant
+};
+```
+
 Using these structures, we pass all the necesssary information to the system to send a packet to the network. Usually, the addresses are in network byte orders, so we use functions
 like `htons()`, `htonl()` to convert from host to network (short and long) order and `ntons()` and `ntohl()` to convert from network to host (short and long). Here is the list of useful
 functions:
@@ -253,6 +267,18 @@ In the `hints` parameter of `getaddrinfo()`, we can set the `ai_family` to `AF_U
 the `hints` param: `ai_family` and `ai_socktype`. We can set the rest all to zero using `memset()` function.
 
 -------------------------
+
+### Server operations: bind(), listen(), and accept()
+
+Most of the time, we use `bind()` for server side operations. Here is the syntax of the bind():
+
+```c
+#include <sys/socket.h>
+
+int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+```
+
+
 
 
 
