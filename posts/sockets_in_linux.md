@@ -544,7 +544,182 @@ limitations of `select()` but still it's slower than `epoll()` and that's becaus
 to only use `epoll()`. We introduce `poll()` because it's just simply easier to understand and it helps better understanding 'epoll()`.
 
 
+##### What is poll(), how it works and why?
 
+All the other functions we mentioned before (`connect()`, `accept()`, `recv()`, `send()`, `listen()`) can do a full server-client application but the problem is that these functions are
+working in blocking mode. Even if we can set them to work in non-blocking mode, it won't be efficient and we need a single thread per connection to handle the communication. One solution
+is to use `pthreads` or `fork()` to handle several channels of communication but then, imagine that we have 50,000 clients connecting to the server and we must run 50,000 threads (or process)
+to handle them which is not efficient at all. `poll()` and `epoll()` solves these problems. The question that these two functions answer is simple: **Of these N sockets I'm managing, which ones currently have data to read, or room to write, or an error?**
+
+Knowing the answer of this question, we don't need to call `recv()` or `send()` blindly without knowing how much the process/threads will be blocked. We call them exactly when we know there
+is data to read (`recv()`) or we can write to the buffer with out blocking the process (`send()`).
+
+Here is the syntax of the `poll()` function:
+
+```c
+#include <poll.h>
+
+int poll(struct pollfd *fds, nfds_t nfds, int timeout);
+
+struct pollfd {
+    int   fd;         // the file descriptor to watch
+    short events;      // what you're interested in (input)
+    short revents;     // what actually happened (output, filled by kernel)
+};
+```
+and here is how we can use it:
+```c
+struct pollfd fds[3];
+
+fds[0].fd = listen_fd;   fds[0].events = POLLIN;
+fds[1].fd = client1_fd;  fds[1].events = POLLIN;
+fds[2].fd = client2_fd;  fds[2].events = POLLIN;
+
+int ready = poll(fds, 3, 5000);   // wait up to 5000ms for ANY of these to be ready
+```
+
+`poll()` blocks until one of the following conditions is satisfied:
+  - at least one fd is ready
+  - the timeout expires
+  - a signal interrupts it
+
+We can then scan our list of file descriptors to see which one is ready:
+```c
+for (int i = 0; i < 3; i++) {
+    if (fds[i].revents & POLLIN) {
+        // this specific fd has data ready — safe to recv() now without blocking
+    }
+}
+```
+
+Here is the list of events/revents flags:
+
+|flag|Meaning|
+|-----|------|
+|POLLIN|Data available to read|
+|POLLOUT|Socket ready for writing (send buffer has room)|
+|POLLERR|Error condition|
+|POLLHUP|Peer closed connection (hang up)|
+|POLLNVAL|Invalid fd (not open)|
+
+These flags are just macros defined in `<poll.h>` header. `events` is what we set (what we are interested in) and `revents` is what the kernel sets (what actually happens).
+
+**NOTE**: `revents` is not strictly limited to what you asked for in `events`. 
+
+```bash
+POLLERR, POLLHUP, POLLNVAL  →  YES, can appear in revents even if you didn't request them
+POLLOUT                      →  NO, will not appear unless you explicitly requested it via events
+```
+
+This means that there might be a case that you set `POLLIN` but you get `POLLERR` or `POLLHUP` but you won't get `POLLOUT`.
+
+However, we are not going to use `poll()`. This was just to know how things work in general. What we are interested in is `epoll()` which is **not** POSIX and only exists in Linux.
+
+The problem of `poll()` is that everytime, we need to scan the whole array looking for the one that is ready and that is O(n). `epoll()` does not have this problem.
+
+```c
+#include <sys/epoll.h>
+
+int epoll_fd = epoll_create1(0);
+
+int epoll_wait(int epfd, struct epoll_event *events,
+                      int maxevents, int timeout);
+
+int epoll_ctl(int epfd, int op, int fd,
+                     struct epoll_event *_Nullable event);
+```
+
+All we have to do is to call these 3 functions. Let's assume that we already called `socket()`, `bind()` and `listen()`. Here is the rest we can do:
+
+```c
+#define MAX_EVENTS 10
+struct epoll_event ev, events[MAX_EVENTS];
+int listen_sock, conn_sock, nfds, epollfd;
+
+epollfd = epoll_create1(0);
+if (epollfd == -1) {
+  perror("epoll_create1");
+  exit(EXIT_FAILURE);
+}
+
+ev.events = EPOLLIN;
+ev.data.fd = listen_sock;
+if (epoll_ctl(epollfd, EPOLL_CTL_ADD, listen_sock, &ev) == -1) {
+  perror("epoll_ctl: listen_sock");
+  exit(EXIT_FAILURE);
+}
+
+for (;;){
+  nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
+  if (nfds == -1) {
+    perror("epoll_wait");
+    exit(EXIT_FAILURE);
+  }
+  for (n = 0; n < nfds; ++n) {
+    if (events[n].data.fd == listen_sock) {
+      conn_sock = accept(listen_sock, (struct sockaddr *) &addr, &addrlen);
+      if (conn_sock == -1) {
+        perror("accept");
+        exit(EXIT_FAILURE);
+      }
+      setnonblocking(conn_sock);
+      ev.events = EPOLLIN | EPOLLET;
+      ev.data.fd = conn_sock;
+      if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn_sock, &ev) == -1) {
+        perror("epoll_ctl: conn_sock");
+        exit(EXIT_FAILURE);
+      }
+    }else{
+      do_use_fd(events[n].data.fd);
+    } // end else
+  } // end if
+}  // end for
+
+```
+
+**NOTES**
+  - `MAX_EVENTS` in the above code is not the number of connections. It's just a number of events returned by epoll_wait. If there are more events than this number (for example here `MAX_EVENTS` is set to 10 but let's say we have 12 events), the extra ones (the remaining 2) will be filled in the next call to `epoll_wait()`.
+  - three types of operations accepted by `epoll_ctl()`:
+    - `EPOLL_CTL_ADD`: start watching this fd
+    - `EPOLL_CTL_MOD`: change what events you're interested in for this fd
+    - `EPOLL_CTL_DEL`: stop watching this fd (e.g., when you close it)
+  - `epoll_wait()` only returns those that actually triggered by the event not the whole list.
+  - `EPOLLET`: setting this event means that `epoll_wait()` only notifies you **once**, at the moment the fd transitions from "not ready" to "ready." If you don't drain all available data in that one wakeup, you won't be told again until more new data arrives — even though old, unread data is technically still sitting there. This is called **edge-triggered mode**. In this mode, you must call `recv()` in a loop to make sure you receive what is there.
+
+```c
+if (events[i].events & EPOLLIN) {
+    while (1) {
+        ssize_t n = recv(fd, buf, sizeof(buf), 0);
+        if (n > 0) {
+            // process buf[0..n)
+            continue;   // keep draining
+        } else if (n == 0) {
+            // peer closed
+            break;
+        } else {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;  // fully drained, normal exit
+            if (errno == EINTR) continue;
+            // real error
+            break;
+        }
+    }
+}
+```
+**NOTE**: make sure that the socket is always in non-blocking mode. This is very important so that you can handle different cases without blocking.
+
+When you don't need the socket anymore, (you already received what you wanted), you can call `epoll_ctl()` with `EPOLL_CTL_DEL` operation and also close the socket. This will remove it
+from the epoll instance. (it will remove it even without calling it as soon as you close the socket but it's better to always call it).
+
+```c
+if (r <= 0) {
+    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);   // explicit, defensive
+    close(fd);
+}
+```
+
+**NOTE**: the `epoll_ctl()` function copies what you pass so it's totally fine to reuse the structure you defined. You don't need to malloc/free everytime. You can just use stack.
+
+--------------------------------------
 
 
 
