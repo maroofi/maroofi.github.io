@@ -301,7 +301,7 @@ setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 ```
 This tells the kernel: "**allow this socket to bind to an address/port that's in TIME_WAIT, as long as it's not actually actively LISTENing elsewhere.**"
 
-#### what if you want to bind to both IPv4 and IPv6 at the same time?
+#### What if you want to bind to both IPv4 and IPv6 at the same time?
 
 There are several ways to do this. The second parameter of the `bind()` is the `sockaddr` structure which has a member `sin_family`. This can be either `AF_INET` or `AF_INET6`. This means
 that `bind()` can only work in one of the stacks (4 or 6). 
@@ -326,7 +326,7 @@ listen(sockfd, SOMAXCONN);   // ← socket is now passively listening
 
 // next: accept() in a loop
 ```
-and also we know that `INADDR_ANY` equals to `0.0.0.0` which is IPv4. So if you want to bind to IPv6, here is the equivalent:
+And also we know that `INADDR_ANY` equals to `0.0.0.0` which is IPv4. So if you want to bind to IPv6, here is the equivalent:
 
 ```c
 struct sockaddr_in6 addr6;
@@ -334,7 +334,7 @@ addr6.sin6_family = AF_INET6;
 addr6.sin6_addr   = in6addr_any;    // the IPv6 wildcard, "::"
 ```
 
-but if you want to do the both, one solution (the cleanest) is to `fork()` the process and the new process run the other stack. I like this one because it's clean. for example, the parent runs
+But if you want to do the both, one solution (the cleanest) is to `fork()` the process and the new process run the other stack. I like this one because it's clean. for example, the parent runs
 on IPv4 and the child runs on IPv6 or you can run two versions of the code to handle things completely separately.
 
 another approach is to use **IPv4-mapped IPv6 address**. In this approach:
@@ -360,6 +360,114 @@ This will accept all the IPv6 addresses and maps all the IPv4 addresses to IPv6 
 (I personally use two separate stacks).
 
 #### Listen to connections
+
+The `listen()` function makes the socket passive. All the functions we call before listen, they just create sockets and (optionally) bind socket to a local address. However, the 
+kernel still does not know if we want to send data or receive data. By calling `listen()`, the kernel knows that this socket should receive incoming connections. So it starts listening
+to the incoming connections and does the handshake (TCP) for us and queues all the connections, waiting for us to call the `accept()` function. The syntax of the `listen()` function is:
+
+```c
+listen(sockfd, backlog);
+```
+
+the `backlog` is actually the number of connections that is put in the queue waiting for the `accept()` function to be called. This is not an exact number and its maximum value is
+always smaller than the maximum values specified by the kernel. The maximum possible value is stored in `/proc/sys/net/core/somaxconn` (which is usually 4096 for new OSes).
+
+The macro **`SOMAXCONN`** specified in `<sys/socket.h>` specifies the maximum possible value and lets us call the `listen()` function like:
+```c
+listen(sockfd, SOMAXCONN);
+```
+
+#### Let's accept the incoming connections
+
+After listening to the socket, we can start accepting connections and this is where client and server are fully connected and can exchange data. The syntax of the `accept()` function is:
+
+```c
+#include <sys/socket.h>
+
+int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+```
+We need to allocate memory for `addr` parameter (stack or heap does not matter) and pass it to `accept()` function. Every accepted connection will fill the structure and we will know who is connected to our server. The
+structure must be large enough to hold the connection information. If we bind on IPv4, we can pass `sockaddr_in` and if we bind on IPv6, we can pass `sockaddr_in6`. If we bind on both,
+since we don't know which stack the client is using, we can pass `sockaddr_storage` which is large enough to keep all the cases. If we don't care about client information, we can pass
+NULL like this:
+
+```c
+int client_fd = accept(sockfd, NULL, NULL);
+```
+Every accepted connection will return a new socket file descriptor which can be used to send/recv data to/from client. Whenever we don't need it anymore, we can just simply close it.
+We can use `fork()` or `pthreads` for each newly accepted connection.
+
+Here is the small example how to use `fork()` in the server code to deal with newly accepted connections:
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+int main(void) {
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    int yes = 1;
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family      = AF_INET;
+    addr.sin_port        = htons(8080);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    bind(sockfd, (struct sockaddr *)&addr, sizeof(addr));
+    listen(sockfd, SOMAXCONN);
+
+    // reap dead children automatically, avoid zombies
+    signal(SIGCHLD, SIG_IGN);
+
+    while (1) {
+        struct sockaddr_in client_addr;
+        socklen_t client_len = sizeof(client_addr);
+
+        int client_fd = accept(sockfd, (struct sockaddr *)&client_addr, &client_len);
+        if (client_fd == -1) {
+            perror("accept");
+            continue;
+        }
+
+        pid_t pid = fork();
+
+        if (pid == -1) {
+            perror("fork");
+            close(client_fd);
+            continue;
+        }
+
+        if (pid == 0) {
+            // ---- CHILD PROCESS ----
+            close(sockfd);        // child doesn't need the listening socket
+            // handle client_fd here: recv()/send()
+            close(client_fd);
+            exit(0);
+        } else {
+            // ---- PARENT PROCESS ----
+            close(client_fd);     // parent doesn't need the connected socket
+            // loop back to accept() immediately, ready for the next client
+        }
+    }
+
+    close(sockfd);
+    return 0;
+}
+```
+
+-------------------------------------------
+
+
+
+
 
 
 
