@@ -1,3 +1,7 @@
+---
+layout: posts
+---
+
 ### Feasibility of issuing TLS cert for a domain name with partial lame delegation
 
 The description of sacrificial nameservers and lame delegation and how it works can be found in 
