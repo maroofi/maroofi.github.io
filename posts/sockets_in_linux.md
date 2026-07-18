@@ -773,6 +773,303 @@ List of errors need to be checked in socket programming:
 
 
 
+### Example
+
+Here is the code that I wrote to show how to work with epoll function family. This is a client application connecting to a TCP server for exchanging message. Whatever you insert
+from the command-line will be sent to the server and whatever server sent will be received by the client. To run the code, first run a server using nc like:
+
+```bash
+nc -lk 127.0.0.1 2222
+# in another terminal, first create a temporary pipe
+mkfifo /tmp/logclient
+# and then track the output for errors
+tail -f /tmp/logclient
+# now in the third terminal, compile and run the client like this
+gcc -o test client_socket.c  && stdbuf -eL ./test 2> /tmp/logclient
+```
+
+Here is the code
+```c
+#include <string.h>
+#include <stdio.h>
+#include <errno.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <sys/epoll.h>
+#include <unistd.h>
+
+int main(int argc, char ** argv){
+    
+    int sockfd;
+
+    // create a TCP socket for IPv6
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1){
+        perror("SOCKET()");
+        return 1;
+    }
+
+    struct timeval tv;
+    tv.tv_sec  = 5;      // 5 second timeout
+    tv.tv_usec = 0;
+    
+    // this will only affect recv() family not connect()
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    // this will only affect send() family not connect()
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+    
+    // let's make connect non-blocking
+    // first get the current flags that are set on the socket
+    // and then add the O_NONBLOCK to it
+    int flag = fcntl(sockfd, F_GETFL, 0);
+    if (fcntl(sockfd, F_SETFL, flag | O_NONBLOCK) != 0){
+        perror("FCNTL()");
+        return 1;
+    }
+    
+
+    // we want the user to send stuff from command line to our server
+    // so we also use stdin and make it non-blocking and use epoll
+    flag = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, flag | O_NONBLOCK);
+
+
+
+    // now the socket is non blocking. This means
+    // that it won't wait for connect() function to do
+    // the handshake and it returns immediately.
+
+
+
+    // so next step to call connect function
+    struct sockaddr_in saddrin;
+    saddrin.sin_family = AF_INET;
+    saddrin.sin_port = htons(2222);
+    if (inet_pton(AF_INET, "127.0.0.1", &saddrin.sin_addr) != 1){
+        perror("INET_PTON()");
+        return 2;
+    }
+
+    if (connect(sockfd, (struct sockaddr *) &saddrin, sizeof(saddrin)) != 0){
+        if (errno == EINPROGRESS){
+            fprintf(stderr, "Connect() on progress....\n");
+        }else{
+            perror("CONNECT()");
+            fprintf(stderr, "Can not connect to the server......\n");
+            return 4;
+        }
+    }
+
+    // we still don't know we are connected or not. This means that
+    // we must use epoll family to check the connection.
+    // connect() man says we can use EPOLLOUT to check if we are
+    // connected or not. When it's triggered, we should check 
+    // SO_ERROR and make sure it's zero
+
+    // we can also check the return value for error
+    int epollfd = epoll_create1(0);
+    struct epoll_event ev = {0};
+    ev.data.fd = sockfd;
+    ev.events = EPOLLOUT;       // will watch for "connect finished" event
+
+    // we can also check the returned value for error
+    epoll_ctl(epollfd, EPOLL_CTL_ADD, sockfd, &ev);
+
+
+    // now let's add an event for stdin as well
+    ev.data.fd = STDIN_FILENO;
+    ev.events = EPOLLIN;
+    epoll_ctl(epollfd, EPOLL_CTL_ADD, STDIN_FILENO, &ev);
+
+
+    struct epoll_event events[8];
+
+    int socket_connected = 0;
+
+    char data_buff[512] = {0};
+    size_t data_buff_len = 0;
+    size_t total_sent = 0;
+    size_t to_send_len = 0;
+
+    int socket_error = 0;
+    int sock_err_len = sizeof(socket_error);
+
+    while (1){
+        
+        // we passed an array that can receive up to 8 events but in practice
+        // we always receive at most 1 event because we have only one socket
+        // as a client.
+        // it will wait for 5 seconds.
+        int n_event = epoll_wait(epollfd, events, 8, -1);
+        if (n_event == 0){   // there is no event. loop again
+            fprintf(stderr, "No event happened in this epoch....continue waiting...\n");
+            continue;
+        }
+
+        if (n_event < 0){   // there is an error
+            perror("EPOLL_WAIT()");
+            return 3;
+        }
+
+        // here we have atleast (and atmost) one event
+        for (int e = 0; e < n_event; ++e){
+            fprintf(stderr, "DEBUG: fd=%d revents=0x%x (EPOLLIN=%d, EPOLLHUP=%d, EPOLLERR=%d)\n",
+            events[e].data.fd, events[e].events,
+            !!(events[e].events & EPOLLIN),
+            !!(events[e].events & EPOLLHUP),
+            !!(events[e].events & EPOLLERR));
+            // a file descriptor returned an event we are interested in
+            if (events[e].data.fd == sockfd && (events[e].events & (EPOLLOUT | EPOLLERR | EPOLLHUP))){
+                // the event is on our socket and is one of the EPOLLOUT/EPOLLERR/EPOLLHUB
+                // the first time it's the connection event
+                if (socket_connected  == 0){
+                    // this is a connection socket event
+                    // now see if SO_ERROR is zero
+                    getsockopt(events[e].data.fd, SOL_SOCKET, SO_ERROR, &socket_error,(socklen_t*) &sock_err_len);
+                    if (socket_error != 0){
+                        // we couldn't connect...return and exit the code
+                        fprintf(stderr, "We couldn't connect to the server.....\n");
+                        return 2;
+                    }else{
+                        socket_connected = 1;
+                        fprintf(stderr, "Socket connected successfully\n");
+                    }
+                    // now after connection. Either the server may send something (e.g., banner) or
+                    // we may want to send something. But we have to read stdin first so we only set
+                    // pollin for reading data from server.
+                    ev.events = EPOLLIN;        // in case server wants to send us something
+                    ev.data.fd = sockfd;
+                    epoll_ctl(epollfd, EPOLL_CTL_MOD, sockfd, &ev);
+                    
+                    // we are done with this socket, let's continue
+                    continue;
+                }else{
+                    // this is another event not "connection" event
+                    // if we are here, it means we are already connected and ready to send data
+                    if (data_buff_len == 0){
+                        // there is nothing to send over socket
+                        fprintf(stderr, "Socket is ready but there is nothing to send...\n");
+                        continue;
+                    }
+                    fprintf(stderr, "We have some stuff to send: %s\n", data_buff);
+                    ssize_t sent = send(events[e].data.fd, data_buff + total_sent, to_send_len - total_sent, 0);
+                    if (sent > 0){
+                        total_sent += sent;
+                        if (total_sent == to_send_len){
+                            // we have sent all the data, we are good.
+                            // now let's receive the data by changing epoll
+                            ev.events = EPOLLIN;
+                            ev.data.fd = sockfd;
+                            epoll_ctl(epollfd, EPOLL_CTL_MOD, sockfd, &ev);
+                            total_sent = 0;
+                            continue;
+                        }
+                        if (total_sent < to_send_len){
+                            // we couldn't send the whole data, we don't
+                            // change the epoll. we will wait for the next round
+                            continue;
+                        }
+                    }else{
+                        if (sent < 0){
+                            // we have some errors
+                            if (errno == EAGAIN || errno == EWOULDBLOCK){
+                                // kernel buffer is full. Let's try again
+                                continue;
+                            }
+                            if (errno == EINTR){
+                                // an intrupt happen. Just try again
+                                continue;
+                            }
+                            perror("SEND()");
+                            fprintf(stderr, "Error in sending data....\n");
+                            return 4;
+                        }
+                    }
+                }
+            } // end if for POLLOUT
+            if ((events[e].events | EPOLLIN)){
+                if (events[e].data.fd == sockfd){
+                    // we have a read event
+                    char buff[64] = {0};
+                    ssize_t received = recv(events[e].data.fd, buff, 63, 0);
+                    if (received > 0){
+                        // printout what you have received
+                        buff[received] = '\0';
+                        fprintf(stdout, "\nReceived (%lu): %s\n", received, buff);
+                        continue;
+                    }
+                    if (received == 0){   // connection closed
+                        // connection closed by peer
+                        fprintf(stderr, "Connection closed by peer...\n");
+                        epoll_ctl(epollfd, EPOLL_CTL_DEL, sockfd, NULL);
+                        close(sockfd);
+                        close(epollfd);
+                        return 0;
+                    }
+                    if (received == -1){
+                        // an error occured
+                        if (errno == EAGAIN || errno == EWOULDBLOCK){
+                            fprintf(stderr, "There is nothing to receive in this round....\n");
+                            continue;
+                        }
+                        if (errno == EINTR){
+                            // some interrupt happened...just retry
+                            continue;
+                        }
+                        perror("RECV()");
+                        fprintf(stderr, "an error occured while receiving data...\n");
+                        epoll_ctl(epollfd, EPOLL_CTL_DEL, sockfd, NULL);
+                        close(sockfd);
+                        close(epollfd);
+                        return 3;
+                    }
+                    // we never handled EPOLLERR and EPOLLHUB
+                    // otherwise, it's all good
+                }else if (events[e].data.fd == STDIN_FILENO && (events[e].events | EPOLLIN)){ // this is stdin
+                    // send the data over the socket
+                    // first read the data from stdin
+                    fprintf(stderr, "let's read from stdin....\n");
+                    ssize_t n = read(STDIN_FILENO, data_buff, 511);
+                    if (n > 0){
+                        fprintf(stderr, "we have read %lu bytes from stdin\n", n);
+                        data_buff[n] = '\0';
+                        to_send_len = n;
+                        data_buff_len = n;
+                        // now that we have something to send, let's see if the socket buffer is ready for it.
+                        ev.data.fd = sockfd;
+                        ev.events = EPOLLOUT;
+                        epoll_ctl(epollfd, EPOLL_CTL_MOD, sockfd, &ev);
+                        continue;
+                    }
+                    if (n == 0 || n < 0){
+                        if (errno == EAGAIN || errno == EWOULDBLOCK){
+                            fprintf(stderr, "nothing to read...\n");
+                            continue;
+                        }
+                        perror("READ()");
+                        fprintf(stderr, "Can not read the input data....\n");
+                        return 2;
+                    }
+
+                }
+
+            }
+        }
+    }
+    return 0;
+}
+```
+
+
+
+
+------------------------------------
+
+
 
 
 
