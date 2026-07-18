@@ -787,8 +787,19 @@ tail -f /tmp/logclient
 # now in the third terminal, compile and run the client like this
 gcc -o test client_socket.c  && stdbuf -eL ./test 2> /tmp/logclient
 ```
+#### Some notes from the code.
 
-Here is the code
+1. we use epoll() for both socket and stdin. Both of them are files so it's completely ok.
+2. We need to make sure we mark the file/socket as non-blocking so that we can work with epoll
+3. to make the file/socket non-blocking, we use fcntl() but first we need to get the current flags and then add `O_NONBLOCK`.
+4. since the socket is non-blocking, connect() function will return immediately not matter if the handshake is done or not, or if the connection is successful or not. it's up to us to find out. based on the man page, the connect() function on non-blocking socket will trigger EPOLLOUT, so the first EPOLLOUT event is for connection and the rest for writing.
+5. When you register EPOLLOUT, you are asking the kernel this question: "Is the file/socket ready for writing?" and the answer is almost always yes. So you need to register this event only you have actually some data to write.
+6. you should call epoll_ctl() only one time with `EPOLL_CTL_ADD`. After that, you must modify with `EPOLL_CTL_MOD`, if you want to register another event.
+7. each call for registering an event will override the previous calls. So if you want to register for 2 events, you must pass it with bitwise or.
+8. when the result of the `send()/recv()` function is less than 0, we must check for `EAGAIN`, `EWOULDBLOCK` and `EINTR` and handle all of them.
+ 
+
+Here is the code.
 ```c
 #include <string.h>
 #include <stdio.h>
