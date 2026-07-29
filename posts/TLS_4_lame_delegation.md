@@ -296,4 +296,10 @@ It seems like the requests (A and AAAA) are coming from different ASes and diffe
 3. Full control over all authoritative nameservers makes certificate issuance trivial.
 4. The failure is independent of challenge type (HTTP-01 or DNS-01); both rely on consistent DNS resolution from multiple validation points.
 
+##### After bottom line
+I tested the whole thing again but this time, I used route53 to host the name server. I created a zone file in route53 for **tmdhosting114.eu** and then created two subdomains (ns1, ns2)
+and point them to my server. Other things remained the same as it was before. However, this time I managed to easily issue a certificate just after 2 efforts. It seems like **speed** plays
+a significant role in this game. Apparently, when ACME asks for the A record of the domain name to perform HTTP challenge, naturally, the name server with the fastest response will be selected. Since route53 is anycast, it is probably the fastest that return the answer.
+
+
 
