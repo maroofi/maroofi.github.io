@@ -168,6 +168,14 @@ curl -k -u prometheus:thisismypassword https://localhost:9100/metrics
 ```
 We should be able to also visit the page (in browser) by going to: `https://<YOUR-SERVER-PUBLIC-IP>:9100/metrics` (we will get certificate browser error at first).
 
+**NOTE**: We can install the **node_exporter** on whatever number of machine we want, in the very same way I just explained. After each installation, we need to keep the 
+1) public URL to visit the metric, 2) username and password we used for HTTP AUTH, 3) the generated hash for HTTP AUTH
+
+Having all that installed, we can move on and install **Grafana** and **Prometheus** on one machine that is less busy and has enough disk or we can rent a VPS (small one) and install the 
+tools there. Then, we will (securely) connect all the node_exporters to our dashboard.
+
+
+### Installing Grafana and Prometheus (dockerized version)
 
 
 
