@@ -116,7 +116,7 @@ htpasswd -nBC 10 "" | tr -d ':\n'
 # the result is something like: $2y$10$SIoEkqfqSvxK7jv3eD6FFOUgQOGIqhCMQCL7YQ//lDZ4CKaoDeU7a
 ```
 
-Now create a config file `/etc/web-config.yml` and paste the followings:
+Now create a config file `/etc/node_exporter/web-config.yml` and paste the followings:
 
 ```bash
 tls_server_config:
