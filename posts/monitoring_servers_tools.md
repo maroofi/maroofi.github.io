@@ -177,5 +177,152 @@ tools there. Then, we will (securely) connect all the node_exporters to our dash
 
 ### Installing Grafana and Prometheus (dockerized version)
 
+It's easier to install **Grafana** and **Pormetheus** in docker. It's also possible to install it on the server directly but I don't see any advantage!
+
+Things that we want to do are:
+1. **Prometheus** panel won't be exposed on Internet. We want it only locally.
+2. **Grafana** panel is exposed on Internet but we need a username and password for it.
+3. **Grafana** panel must be HTTPS (secured) so we will issue a self-signed certificate for it.
+4. Everything will work based on dockers but we need to make sure the data persist. So we'll store the data on the host.
+
+We created 3 scripts as follows:
+1. `generate-cert.sh`: will generate certificate for connecting to **Grafana** panel securely.
+2. `prometheus.yml`: this is the configuration file we pass to **Prometheus**. We put all the information of the node_exporters here.
+3. `docker-compose.yml`: this is our final docker file to run everything with docker compose.
+
+first create a directory like `monitoring` for example so that we put everything in it.
+
+Here is what we have in `generate-cert.sh`:
+```bash
+#!/bin/bash
+# Generates a self-signed TLS certificate for Grafana.
+# Replace CN / SAN with your actual server IP or hostname if you have one.
+
+set -e
+
+CERT_DIR="./certs"
+DAYS_VALID=825   # ~2.25 years, common self-signed cert lifetime
+CN="grafana.local"   # change to your domain or server IP
+
+mkdir -p "$CERT_DIR"
+
+openssl req -x509 -nodes -newkey rsa:2048 \
+  -keyout "$CERT_DIR/grafana.key" \
+  -out "$CERT_DIR/grafana.crt" \
+  -days $DAYS_VALID \
+  -subj "/CN=$CN" \
+  -addext "subjectAltName=DNS:$CN,IP:127.0.0.1"
+
+# Grafana's container runs as UID 472 (non-root), not as whoever runs this
+# script. 644 lets that user read the key when it's bind-mounted read-only.
+# (Fine for a self-signed key used only by this local Grafana container;
+# don't reuse this key/cert for anything more sensitive.)
+chmod 644 "$CERT_DIR/grafana.key"
+chmod 644 "$CERT_DIR/grafana.crt"
+
+echo "Certificate generated in $CERT_DIR/"
+echo "  - grafana.crt"
+echo "  - grafana.key"
+```
+
+Here is the content of the `prometheus.yml` file:
+
+```bash
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+# repeat this block for each server you installed node_exporter
+# for example, if you have 10 servers, you need 10 blocks like this
+  - job_name: 'srv-detection'         
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true
+    basic_auth:
+      username: prometheus      # here is your username for this node
+      password: thisismypassword # here is the password you set on this node  
+    static_configs:
+      - targets: ['37.27.67.243:9100']   # <-- IP:PORT of the server
+        labels:
+          instance: 'srv-detection'          # <-- put a nice name here and we show this on grafana
+  
+````
+
+And here is the `docker-compose.yml` file:
+```bash
+version: '3.8'
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    ports:
+      # bind it to localhost to make not exposed on Internet
+      # Access it via: ssh -L 9090:localhost:9090 user@IP-ADDR
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./certs:/etc/grafana/certs:ro
+    environment:
+      # --- Auth ---
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin@123
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
+      # --- HTTPS ---
+      - GF_SERVER_PROTOCOL=https
+      - GF_SERVER_CERT_FILE=/etc/grafana/certs/grafana.crt
+      - GF_SERVER_CERT_KEY=/etc/grafana/certs/grafana.key
+      - GF_SERVER_DOMAIN=localhost
+    ports:
+      # This one IS meant to be reachable (dashboard), over HTTPS.
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:
+```
+
+The docker compose file will create a network bridge so that grafana and prometheus can connect to each other internally. 
+
+Now that we have all 3 scripts, first run `generate-cert.sh` to generate the certificates. and then just simply run 
+`docker compose up -d` to start the docker. Now we can visit `https://<IP-ADDRESS>:3000` to see the grafana panel.
+
+**NOTES**: 
+1. before running the docker, you need to change the value of `GF_SECURITY_ADMIN_PASSWORD` to something secure.
+2. If you want to connect to prometheus dashboard (e.g., to see /targets), you can create a tunnel with ssh `ssh -L 9090:localhost:9090 user@<server-ip>` and then visit `http://localhost:9090` in you browser.
+3. to set the data source in grafana, you must set it as `http://prometheus:9090` **not** `http://localhost:9090`. This is due to the fact that localhost inside the grafana docker means the grafana docker itself.
+4. Make sure that you have docker in your user group: `sudo usermod -aG docker $USER` so that you **never** run docker with sudo.
+
+The final step is to launch grafana panel (`https://<server-IP>:3000`) and start creating dashboards and panels to monitor servers.
 
 
+--------------------------------------
