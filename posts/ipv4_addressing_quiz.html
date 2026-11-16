@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>IPv4 addressing practice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eef2f5;
+    --surface: #ffffff;
+    --ink: #1c2a3a;
+    --muted: #5b6b7c;
+    --line: #d3dce4;
+    --accent: #1f6fb2;
+    --accent-ink: #ffffff;
+    --ok: #2e7d4f;
+    --ok-bg: #e4f3ea;
+    --bad: #b23a3a;
+    --bad-bg: #f8e6e6;
+    --empty: #d9e1e8;
+    color-scheme: light;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121a23;
+      --surface: #1a2531;
+      --ink: #e3eaf1;
+      --muted: #94a3b3;
+      --line: #2c3a49;
+      --accent: #5aa5e6;
+      --accent-ink: #0d1a26;
+      --ok: #6cc893;
+      --ok-bg: #173226;
+      --bad: #ef8a8a;
+      --bad-bg: #3a1d1f;
+      --empty: #2a3846;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121a23;
+    --surface: #1a2531;
+    --ink: #e3eaf1;
+    --muted: #94a3b3;
+    --line: #2c3a49;
+    --accent: #5aa5e6;
+    --accent-ink: #0d1a26;
+    --ok: #6cc893;
+    --ok-bg: #173226;
+    --bad: #ef8a8a;
+    --bad-bg: #3a1d1f;
+    --empty: #2a3846;
+    color-scheme: dark;
+  }
+  html { scroll-padding-top: calc(env(safe-area-inset-top, 0px) + 110px); }
+  *, *::before, *::after { box-sizing: inherit; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 17px;
+    line-height: 1.55;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0 0 auto;
+    height: env(safe-area-inset-top, 0px); z-index: 10;
+    background: var(--bg);
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 20px; }
+
+  header.top {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+    padding: 18px 0 14px;
+  }
+  .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 1.6rem; font-weight: 700; letter-spacing: -0.01em; }
+  .score { font-size: 0.95rem; color: var(--muted); }
+  .score strong { color: var(--ink); font-weight: 600; }
+
+  .strip {
+    display: grid; grid-template-columns: repeat(30, 1fr); gap: 3px;
+    margin-top: 12px;
+  }
+  .cell {
+    height: 14px; border: 0; padding: 0; border-radius: 2px;
+    background: var(--empty); cursor: pointer;
+  }
+  .cell.ok { background: var(--ok); }
+  .cell.bad { background: var(--bad); }
+  .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .intro { color: var(--muted); margin: 22px 0 8px; max-width: 62ch; }
+
+  ol.questions { list-style: none; margin: 0; padding: 0; }
+  .q {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--line);
+    border-radius: 6px;
+    padding: 18px 20px 16px;
+    margin: 14px 0;
+    transition: border-color .2s;
+  }
+  .q.ok { border-left-color: var(--ok); }
+  .q.bad { border-left-color: var(--bad); }
+  .q-head { display: flex; gap: 12px; }
+  .q-num {
+    flex: 0 0 auto; font-weight: 700; color: var(--accent);
+    min-width: 2ch; font-variant-numeric: tabular-nums;
+  }
+  .q-text { margin: 0; font-weight: 500; }
+  .q-body { margin-left: calc(2ch + 12px); }
+  pre.config {
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.92rem;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+    padding: 10px 12px; margin: 10px 0 0; overflow-x: auto;
+  }
+  .hint { font-size: 0.88rem; color: var(--muted); margin: 6px 0 0; }
+
+  .fields { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 220px; }
+  .field label { font-size: 0.85rem; color: var(--muted); }
+  input[type="text"] {
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 1rem;
+    padding: 9px 11px;
+    border: 1px solid var(--line); border-radius: 4px;
+    background: var(--bg); color: var(--ink);
+    width: 100%;
+  }
+  input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+
+  .options { display: grid; gap: 6px; margin-top: 12px; }
+  .opt {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px;
+    cursor: pointer; background: var(--bg);
+  }
+  .opt:hover { border-color: var(--accent); }
+  .opt input { margin-top: 5px; accent-color: var(--accent); }
+  .opt .letter { font-weight: 600; min-width: 1.4ch; }
+  .opt.is-correct { border-color: var(--ok); background: var(--ok-bg); }
+  .opt.is-wrong { border-color: var(--bad); background: var(--bad-bg); }
+
+  .actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+  button.check, button.reset {
+    font: inherit; font-weight: 600; font-size: 0.95rem;
+    border-radius: 4px; padding: 8px 20px; cursor: pointer;
+  }
+  button.check { background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); }
+  button.check:hover { filter: brightness(1.08); }
+  button.reset { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  button.reset:hover { border-color: var(--bad); color: var(--bad); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .feedback { font-size: 0.95rem; }
+  .feedback.ok { color: var(--ok); font-weight: 600; }
+  .feedback.bad { color: var(--bad); }
+  .feedback .answer {
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    color: var(--ink); font-weight: 500;
+    background: var(--bad-bg); padding: 1px 6px; border-radius: 3px;
+  }
+
+  footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 20px 0 48px; color: var(--muted); }
+
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    h1 { font-size: 1.3rem; }
+    .q { padding: 14px 14px 12px; }
+    .q-body { margin-left: 0; }
+    .strip { gap: 2px; }
+    .cell { height: 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .q { transition: none; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="title-row">
+      <h1>IPv4 addressing practice</h1>
+      <div class="score" id="score" aria-live="polite"></div>
+    </div>
+    <div class="strip" id="strip" aria-label="Question status"></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="intro">Type your answer or pick an option, then press Check. You can change an answer and check it again as many times as you like.</p>
+  <ol class="questions" id="questions"></ol>
+  <footer>
+    <span>30 questions</span>
+    <button class="reset" id="resetBtn" type="button">Clear all answers</button>
+  </footer>
+</main>
+
+<script>
+/*
+  Question types:
+   - text:   one input; "accept" lists every answer that counts as correct
+   - multi:  several inputs (e.g. network + broadcast); every part must be right
+   - mc:     multiple choice; "answer" is the index of the correct option
+*/
+const QUESTIONS = [
+  { type: "text", q: "What is the subnet mask of 192.168.10.0/26?",
+    accept: ["255.255.255.192"], show: "255.255.255.192" },
+
+  { type: "multi", q: "Given the IP address 192.168.1.130/25, what are the network address and broadcast address?",
+    parts: [
+      { label: "Network address", accept: ["192.168.1.128"], show: "192.168.1.128" },
+      { label: "Broadcast address", accept: ["192.168.1.255"], show: "192.168.1.255" }
+    ] },
+
+  { type: "text", q: "How many usable host IP addresses are available in a /27 subnet?",
+    accept: ["30"], show: "30" },
+
+  { type: "mc", q: "Which of the following IP addresses belongs to the private IPv4 address range?",
+    options: ["172.32.10.5", "172.20.10.5", "192.169.1.1", "11.0.0.1"], answer: 1 },
+
+  { type: "text", q: "Given the network 10.10.20.0/23, what is its broadcast address?",
+    accept: ["10.10.21.255"], show: "10.10.21.255" },
+
+  { type: "text", q: "What is the CIDR notation for the subnet mask 255.255.255.224?",
+    hint: "Write it as /x", accept: ["/27", "27"], show: "/27" },
+
+  { type: "multi", q: "Given the IP address 192.168.50.77/28, what are the first and last usable IP addresses?",
+    parts: [
+      { label: "First usable", accept: ["192.168.50.65"], show: "192.168.50.65" },
+      { label: "Last usable", accept: ["192.168.50.78"], show: "192.168.50.78" }
+    ] },
+
+  { type: "text", q: "Which CIDR block is reserved for Carrier-Grade NAT (CGNAT)?",
+    hint: "Write it as network/prefix", accept: ["100.64.0.0/10"], show: "100.64.0.0/10" },
+
+  { type: "text", q: "You have the network 192.168.100.0/24 and need to divide it into 4 equal-sized subnets. What will be the new CIDR prefix for each subnet?",
+    hint: "Write it as /x", accept: ["/26", "26"], show: "/26" },
+
+  { type: "text", q: "You have the IP address 172.16.35.123/20. What is the network address?",
+    accept: ["172.16.32.0"], show: "172.16.32.0" },
+
+  { type: "text", q: "A network administrator needs at least 500 usable host IP addresses in one subnet. Which CIDR prefix should they choose to accommodate this while minimizing wasted addresses?",
+    hint: "Write it as /x", accept: ["/23", "23"], show: "/23" },
+
+  { type: "text", q: "You are given the IP address 192.168.10.200/26. Which subnet does this IP belong to?",
+    hint: "Write it as network/prefix", accept: ["192.168.10.192/26", "192.168.10.192"], show: "192.168.10.192/26" },
+
+  { type: "text", q: "What is the wildcard mask corresponding to the subnet mask 255.255.255.192?",
+    accept: ["0.0.0.63"], show: "0.0.0.63" },
+
+  { type: "mc", q: "A computer has the following network configuration. What is the main problem with it?",
+    pre: "IP address:      192.168.1.50\nSubnet mask:     255.255.255.0\nDefault gateway: 192.168.2.1",
+    options: ["The IP address is invalid.", "The subnet mask is incorrect.", "The default gateway is outside the local subnet.", "The IP address is a public address."],
+    answer: 2 },
+
+  { type: "text", q: "Given the IP address 10.25.78.200/18, what is the correct broadcast address?",
+    accept: ["10.25.127.255"], show: "10.25.127.255" },
+
+  { type: "text", q: "You have the network 192.168.1.0/24 and need a subnet that supports at least 100 usable hosts. Which subnet mask should you choose to minimize wasted addresses?",
+    hint: "Either /x or dotted-decimal is fine",
+    accept: ["/25", "25", "255.255.255.128", "/25-255.255.255.128", "255.255.255.128-/25", "/25(255.255.255.128)"],
+    show: "/25 (255.255.255.128)" },
+
+  { type: "mc", q: "Which of the following IP addresses is a link-local IPv4 address?",
+    options: ["169.254.25.10", "172.16.25.10", "100.64.25.10", "192.168.25.10"], answer: 0 },
+
+  { type: "mc", q: "You are given 192.168.5.130/25. Which of the following is the last usable IP address in this subnet?",
+    options: ["192.168.5.127", "192.168.5.255", "192.168.5.129", "192.168.5.254"], answer: 3 },
+
+  { type: "text", q: "A network administrator has the network 172.16.0.0/16 and wants to create 16 equal-sized subnets. What will be the new CIDR prefix?",
+    hint: "Write it as /x", accept: ["/20", "20"], show: "/20" },
+
+  { type: "text", q: "Given the IP address 172.20.145.200/21, what is the network address?",
+    accept: ["172.20.144.0"], show: "172.20.144.0" },
+
+  { type: "text", q: "What is the binary representation of the decimal number 192 in an IPv4 subnet mask?",
+    hint: "8 bits", accept: ["11000000"], show: "11000000" },
+
+  { type: "text", q: "You have the network 192.168.10.0/24 and decide to use a /27 subnet mask. How many equal-sized subnets can you create?",
+    accept: ["8"], show: "8" },
+
+  { type: "mc", q: "A computer receives the IP address 169.254.10.25 automatically. What is the most likely reason?",
+    options: ["The computer successfully received an IP from DHCP.", "The computer could not obtain an IP address from a DHCP server.", "The computer received a public IP address.", "The computer is using a CGNAT address."],
+    answer: 1 },
+
+  { type: "text", q: "Given the network 192.168.200.0/27, what is the broadcast address of the fifth subnet, assuming subnet numbering starts at 1?",
+    accept: ["192.168.200.159"], show: "192.168.200.159" },
+
+  { type: "text", q: "A router has the following four consecutive networks. What is the smallest single CIDR block that summarizes all four?",
+    pre: "192.168.0.0/24\n192.168.1.0/24\n192.168.2.0/24\n192.168.3.0/24",
+    hint: "Write it as network/prefix", accept: ["192.168.0.0/22"], show: "192.168.0.0/22" },
+
+  { type: "mc", q: "You are given the network 192.168.50.0/26. Which of the following IP addresses is NOT a valid host address in this subnet?",
+    options: ["192.168.50.10", "192.168.50.62", "192.168.50.63", "192.168.50.45"], answer: 2 },
+
+  { type: "mc", q: "Given the CIDR block 100.64.0.0/10, how many total IPv4 addresses does this block contain?",
+    options: ["1,048,576", "2,097,152", "4,194,304", "8,388,608"], answer: 2 },
+
+  { type: "text", q: "You are configuring a Cisco access control list (ACL) and want to match all IP addresses in the subnet 192.168.10.0/24. Which wildcard mask should you use?",
+    accept: ["0.0.0.255"], show: "0.0.0.255" },
+
+  { type: "text", q: "Given the IP address 192.168.75.190/27, what is the correct broadcast address?",
+    accept: ["192.168.75.191"], show: "192.168.75.191" },
+
+  { type: "text", q: "You have the network 192.168.1.0/24 and need a subnet supporting at least 50 usable hosts. Which CIDR prefix is the smallest suitable subnet?",
+    hint: "Write it as /x", accept: ["/26", "26"], show: "/26" }
+];
+
+const LETTERS = ["A", "B", "C", "D", "E", "F"];
+const status = new Array(QUESTIONS.length).fill(null); // null | true | false
+
+// Lowercase, unify dashes, drop all whitespace
+function norm(s) {
+  return String(s).toLowerCase().replace(/[\u2013\u2014]/g, "-").replace(/\s+/g, "");
+}
+function matches(value, acceptList) {
+  const v = norm(value);
+  return v !== "" && acceptList.some(a => norm(a) === v);
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+const list = document.getElementById("questions");
+const strip = document.getElementById("strip");
+
+QUESTIONS.forEach((item, i) => {
+  const n = i + 1;
+  const li = document.createElement("li");
+  li.className = "q";
+  li.id = "q" + n;
+
+  let body = "";
+  if (item.pre) body += `<pre class="config">${esc(item.pre)}</pre>`;
+  if (item.hint) body += `<p class="hint">${esc(item.hint)}</p>`;
+
+  if (item.type === "text") {
+    body += `<div class="fields"><div class="field">
+      <label for="in-${n}">Your answer</label>
+      <input type="text" id="in-${n}" autocomplete="off" autocapitalize="off" spellcheck="false">
+    </div></div>`;
+  } else if (item.type === "multi") {
+    body += `<div class="fields">` + item.parts.map((p, k) => `
+      <div class="field">
+        <label for="in-${n}-${k}">${esc(p.label)}</label>
+        <input type="text" id="in-${n}-${k}" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </div>`).join("") + `</div>`;
+  } else if (item.type === "mc") {
+    body += `<div class="options" role="radiogroup">` + item.options.map((o, k) => `
+      <label class="opt">
+        <input type="radio" name="mc-${n}" value="${k}">
+        <span class="letter">${LETTERS[k]}.</span>
+        <span>${esc(o)}</span>
+      </label>`).join("") + `</div>`;
+  }
+
+  body += `<div class="actions">
+    <button class="check" type="button">Check</button>
+    <span class="feedback" aria-live="polite"></span>
+  </div>`;
+
+  li.innerHTML = `
+    <div class="q-head"><span class="q-num">${n}</span><p class="q-text">${esc(item.q)}</p></div>
+    <div class="q-body">${body}</div>`;
+  list.appendChild(li);
+
+  li.querySelector(".check").addEventListener("click", () => check(i));
+  li.querySelectorAll('input[type="text"]').forEach(inp =>
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") check(i); }));
+
+  const cell = document.createElement("button");
+  cell.type = "button";
+  cell.className = "cell";
+  cell.title = "Question " + n;
+  cell.setAttribute("aria-label", "Go to question " + n);
+  cell.addEventListener("click", () => {
+    li.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    const first = li.querySelector("input");
+    if (first) first.focus({ preventScroll: true });
+  });
+  strip.appendChild(cell);
+});
+
+function check(i) {
+  const item = QUESTIONS[i];
+  const n = i + 1;
+  const li = document.getElementById("q" + n);
+  const fb = li.querySelector(".feedback");
+  let correct = false;
+  let message = "";
+
+  if (item.type === "text") {
+    const val = document.getElementById("in-" + n).value;
+    if (norm(val) === "") { fb.className = "feedback"; fb.textContent = "Type an answer first."; return; }
+    correct = matches(val, item.accept);
+    message = `Not correct. The correct answer is <span class="answer">${esc(item.show)}</span>`;
+  }
+
+  if (item.type === "multi") {
+    const vals = item.parts.map((p, k) => document.getElementById(`in-${n}-${k}`).value);
+    if (vals.every(v => norm(v) === "")) { fb.className = "feedback"; fb.textContent = "Fill in the boxes first."; return; }
+    const results = item.parts.map((p, k) => matches(vals[k], p.accept));
+    correct = results.every(Boolean);
+    const wrongParts = item.parts.filter((p, k) => !results[k]);
+    message = "Not correct. " + wrongParts.map(p =>
+      `${esc(p.label)}: <span class="answer">${esc(p.show)}</span>`).join(" &nbsp; ");
+  }
+
+  if (item.type === "mc") {
+    const picked = li.querySelector(`input[name="mc-${n}"]:checked`);
+    if (!picked) { fb.className = "feedback"; fb.textContent = "Pick an option first."; return; }
+    const k = Number(picked.value);
+    correct = k === item.answer;
+    li.querySelectorAll(".opt").forEach((opt, idx) => {
+      opt.classList.remove("is-correct", "is-wrong");
+      if (idx === item.answer) opt.classList.add("is-correct");
+      else if (idx === k) opt.classList.add("is-wrong");
+    });
+    message = `Not correct. The correct answer is <span class="answer">${LETTERS[item.answer]}. ${esc(item.options[item.answer])}</span>`;
+  }
+
+  status[i] = correct;
+  li.classList.toggle("ok", correct);
+  li.classList.toggle("bad", !correct);
+  fb.className = "feedback " + (correct ? "ok" : "bad");
+  fb.innerHTML = correct ? "Correct ✓" : message;
+  updateScore();
+}
+
+function updateScore() {
+  const checked = status.filter(s => s !== null).length;
+  const right = status.filter(s => s === true).length;
+  document.getElementById("score").innerHTML =
+    `Correct: <strong>${right}</strong> of ${QUESTIONS.length} &nbsp; Checked: <strong>${checked}</strong>`;
+  strip.querySelectorAll(".cell").forEach((c, i) => {
+    c.classList.toggle("ok", status[i] === true);
+    c.classList.toggle("bad", status[i] === false);
+  });
+}
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  if (!confirm("Clear all answers and start over?")) return;
+  status.fill(null);
+  document.querySelectorAll('input[type="text"]').forEach(inp => inp.value = "");
+  document.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
+  document.querySelectorAll(".opt").forEach(o => o.classList.remove("is-correct", "is-wrong"));
+  document.querySelectorAll(".q").forEach(q => q.classList.remove("ok", "bad"));
+  document.querySelectorAll(".feedback").forEach(f => { f.className = "feedback"; f.textContent = ""; });
+  updateScore();
+  window.scrollTo({ top: 0 });
+});
+
+updateScore();
+</script>
+</body>
+</html>
